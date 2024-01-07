@@ -1,0 +1,51 @@
+app/python-app/lib64
+app/python-app/bin/flask
+
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+__init__.pyc
+__init__.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual Environment
+venv/
+env/
+env.bak/
+ENV/
+.vscode/
+
+# Jenkins
+*.log
+workspace/
+
+# Docker
+Dockerfile*
+docker-compose.yml
+.dockerignore
+*.tar
+*.gz
+*.zip
+*.db
+*.sqlite3
+*.sql
+*.tar.gz
+*.tgz
+
+# Logs
+*.log
+
+# Ignore any local environment or secret files (modify this as needed)
+.env
+.env.local
+*.secret
+*.key
+
+# Ignore macOS system files
+.DS_Store
