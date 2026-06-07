@@ -45,4 +45,8 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Gunicorn worker count is overridable via the GUNICORN_WORKERS env var
 # (defaults to 2). The Helm chart can tune it without rebuilding the image.
-CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-2} --access-logfile - --error-logfile - app.main:create_app()"]
+# Using sh -c so shell parameter expansion works; `exec` keeps gunicorn as
+# PID 1 for correct signal handling. The WSGI target is `app.main:app`
+# (a module-level Flask instance) so the CMD string contains no shell-
+# interpreted parentheses.
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-2} --access-logfile - --error-logfile - app.main:app"]
