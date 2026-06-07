@@ -9,6 +9,12 @@ End-to-end DevOps reference: a tiny Flask app, a multi-stage Docker image, a Hel
 
 The app itself is intentionally trivial (it returns the pod's identity from the Kubernetes Downward API). The point is the **pipeline shape**, not the business logic.
 
+## Demo
+
+| `ci` + `smoke` + `gitops-e2e` all green on main | `smoke.yml` — kind cluster, helm install, curl /healthz | `gitops-e2e.yml` — Argo CD reconciles the chart from the PR ref |
+| --- | --- | --- |
+| ![CI passing](docs/screenshots/ci-passing.png) | ![kind smoke](docs/screenshots/kind-smoke.png) | ![argo sync](docs/screenshots/argo-sync.png) |
+
 ## Architecture
 
 ```mermaid
