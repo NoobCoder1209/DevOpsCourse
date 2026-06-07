@@ -10,59 +10,28 @@ on:
       - "PLAN.md"
       - ".github/dependabot.yml"
 
-permissions:
-  contents: write   # to commit the dev-tag bump back to main
-  packages: write   # to push to GHCR
-
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: false   # don't drop in-flight builds — image is the SoT
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    outputs:
-      image_tag: ${{ steps.meta.outputs.tag }}
-      image_repo: ${{ steps.meta.outputs.repo }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          # Need a token with write access for the value-bump commit. The
-          # default GITHUB_TOKEN works because permissions: contents: write.
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compute lowercase image repo + tag
-        id: meta
-        # GHCR rejects uppercase in repo paths. The owner/repo here is
-        # NoobCoder1209/DevOpsCourse → lowercase via tr.
-        run: |
-          repo=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
-          tag="sha-${GITHUB_SHA::7}"
-          echo "repo=$repo" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag"   >> "$GITHUB_OUTPUT"
-
-      - uses: docker/setup-buildx-action@v4
-
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: docker/build-push-action@v7
-        with:
-          context: .
-          push: true
-          tags: |
-            ${{ steps.meta.outputs.repo }}:${{ steps.meta.outputs.tag }}
-            ${{ steps.meta.outputs.repo }}:latest
-          labels: |
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: NoobCoder1209/github-actions-templates/.github/workflows/_docker-buildx.yml@v0.1.0
+    with:
+      # GHCR rejects uppercase in image paths — pre-lowercase the repo slug.
+      # Hardcoded because GHA expressions don't support tr/lower.
+      image: noobcoder1209/devopscourse
+      tag: sha-${{ github.sha }}
+      context: .
+      dockerfile: Dockerfile
+      platforms: linux/amd64
+      push: true
+      provenance: true
 
   bump-dev:
     needs: build
@@ -74,6 +43,10 @@ jobs:
       - uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute short SHA tag
+        id: tag
+        run: echo "value=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Install yq
         env:
@@ -88,13 +61,16 @@ jobs:
           yq --version
 
       - name: Bump environments/dev/values.yaml image.tag
+        env:
+          NEW_TAG: ${{ steps.tag.outputs.value }}
         run: |
-          yq -i '.image.tag = "${{ needs.build.outputs.image_tag }}"' \
-            environments/dev/values.yaml
+          yq -i '.image.tag = strenv(NEW_TAG)' environments/dev/values.yaml
           echo "--- after bump ---"
           cat environments/dev/values.yaml
 
       - name: Commit + push
+        env:
+          NEW_TAG: ${{ steps.tag.outputs.value }}
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -103,5 +79,5 @@ jobs:
             exit 0
           fi
           git add environments/dev/values.yaml
-          git commit -m "chore(dev): bump image to ${{ needs.build.outputs.image_tag }} [skip ci]"
+          git commit -m "chore(dev): bump image to $NEW_TAG [skip ci]"
           git push
