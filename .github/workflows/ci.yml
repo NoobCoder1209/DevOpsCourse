@@ -1,0 +1,75 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dev deps
+        run: pip install -r requirements-dev.txt
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest -q
+
+  helm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.4
+
+      - name: helm lint (base)
+        run: helm lint chart/ --strict
+
+      - name: helm lint (dev overlay)
+        run: helm lint chart/ -f environments/dev/values.yaml --strict
+
+      - name: helm lint (prod overlay)
+        run: helm lint chart/ -f environments/prod/values.yaml --strict
+
+      - name: helm template renders
+        run: |
+          helm template demo chart/ -f environments/dev/values.yaml > /tmp/dev.yaml
+          helm template demo chart/ -f environments/prod/values.yaml > /tmp/prod.yaml
+          # Sanity: every render must wire the Downward API contract.
+          for f in /tmp/dev.yaml /tmp/prod.yaml; do
+            grep -q 'name: POD_NAME'   "$f" || { echo "POD_NAME missing in $f"; exit 1; }
+            grep -q 'name: POD_IP'     "$f" || { echo "POD_IP missing in $f"; exit 1; }
+            grep -q 'name: NODE_NAME'  "$f" || { echo "NODE_NAME missing in $f"; exit 1; }
+            grep -q 'runAsNonRoot: true' "$f" || { echo "runAsNonRoot missing in $f"; exit 1; }
+            grep -q 'path: /healthz'    "$f" || { echo "/healthz probe missing in $f"; exit 1; }
+          done
+
+  actionlint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: raven-actions/actionlint@v2
+        with:
+          version: 1.7.1

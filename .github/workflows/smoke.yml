@@ -1,0 +1,99 @@
+name: smoke
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "tests/**"
+      - "chart/**"
+      - "environments/**"
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "requirements*.txt"
+      - "pyproject.toml"
+      - ".github/workflows/smoke.yml"
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build local image (loaded into local docker daemon)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: podinfo-app:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - uses: helm/kind-action@v1.10.0
+        with:
+          version: v0.23.0
+          node_image: kindest/node:v1.30.0
+          cluster_name: smoke
+          wait: 120s
+
+      - name: Load image into kind
+        run: kind load docker-image podinfo-app:ci --name smoke
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.4
+
+      - name: helm install
+        run: |
+          helm install demo chart/ \
+            --set image.repository=podinfo-app \
+            --set image.tag=ci \
+            --set image.pullPolicy=Never \
+            --wait --timeout 3m
+
+      - name: Wait for deployment
+        run: |
+          kubectl rollout status deploy/demo-podinfo-app --timeout=120s
+          kubectl get pods -o wide
+
+      - name: Curl service via port-forward
+        run: |
+          kubectl port-forward svc/demo-podinfo-app 18080:80 >/tmp/pf.log 2>&1 &
+          PF_PID=$!
+          trap 'kill $PF_PID 2>/dev/null || true' EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS --max-time 3 http://127.0.0.1:18080/healthz; then
+              echo
+              echo "healthz ok"
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS --max-time 3 http://127.0.0.1:18080/healthz | grep -q '"status":"ok"'
+          # Sanity: Downward API actually injected pod identity.
+          body=$(curl -fsS --max-time 3 http://127.0.0.1:18080/)
+          echo "$body" | python3 -c 'import json,sys;d=json.loads(sys.stdin.read());assert d["podName"].startswith("demo-podinfo-app"),d;assert d["nodeName"],d;print("podinfo ok:",d)'
+
+      - name: helm test
+        run: helm test demo --logs
+
+      - name: Cluster diagnostics on failure
+        if: failure()
+        run: |
+          echo "::group::nodes";    kubectl get nodes -o wide;   echo "::endgroup::"
+          echo "::group::all -A";   kubectl get all -A -o wide;  echo "::endgroup::"
+          echo "::group::events";   kubectl get events -A --sort-by=.lastTimestamp; echo "::endgroup::"
+          echo "::group::describe"; kubectl describe pods -l app.kubernetes.io/instance=demo; echo "::endgroup::"
+          echo "::group::logs";     kubectl logs -l app.kubernetes.io/instance=demo --all-containers --tail=200 || true; echo "::endgroup::"
+          echo "::group::helm";     helm status demo; echo "::endgroup::"

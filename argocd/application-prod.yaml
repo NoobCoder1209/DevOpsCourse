@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: podinfo-app-prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/NoobCoder1209/DevOpsCourse
+    targetRevision: main
+    path: chart
+    helm:
+      valueFiles:
+        - values.yaml
+        - ../environments/prod/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: podinfo-prod
+  syncPolicy:
+    # Manual sync for prod — auto-sync only happens with deliberate
+    # `argocd app sync podinfo-app-prod` or via the UI button.
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

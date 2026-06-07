@@ -1,0 +1,139 @@
+name: gitops-e2e
+
+# Full GitOps proof: kind cluster, install Argo CD via Helm, apply the
+# ApplicationSet pointed at THIS PR's ref + chart, wait for Synced+Healthy,
+# curl the deployed service. The aim is "the GitOps story works end to end".
+
+on:
+  pull_request:
+    paths:
+      - "chart/**"
+      - "environments/**"
+      - "argocd/**"
+      - ".github/workflows/gitops-e2e.yml"
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitops-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # ----- 1. cluster + tooling -----
+      - uses: helm/kind-action@v1.10.0
+        with:
+          version: v0.23.0
+          node_image: kindest/node:v1.30.0
+          cluster_name: gitops
+          wait: 120s
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.15.4
+
+      # ----- 2. build + load image into kind so the Argo-synced app finds it -----
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: podinfo-app:gitops
+          cache-from: type=gha
+
+      - name: Load image into kind
+        run: kind load docker-image podinfo-app:gitops --name gitops
+
+      # ----- 3. install Argo CD -----
+      - name: Install Argo CD
+        run: |
+          kubectl create namespace argocd
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm repo update
+          helm install argocd argo/argo-cd \
+            --namespace argocd \
+            --version 7.6.12 \
+            --set configs.params."server\.insecure"=true \
+            --wait --timeout 6m
+          kubectl -n argocd rollout status deploy/argocd-server --timeout=120s
+
+      # ----- 4. point the ApplicationSet at this PR's repo + ref -----
+      # The default applicationset.yaml uses the main repo ref. For PRs we
+      # override to the PR's head ref so Argo syncs the PR's chart, not main's.
+      - name: Patch ApplicationSet to PR ref + local image
+        env:
+          REPO_URL: https://github.com/${{ github.repository }}
+          # On push to main, github.head_ref is empty; fall back to ref_name.
+          REF: ${{ github.head_ref || github.ref_name }}
+          YQ_VERSION: v4.44.3
+          YQ_SHA256: a2c097180dd884a8d50c956ee16a9cec070f30a7947cf4ebf87d5f36213e9ed7
+        run: |
+          set -eu
+          sudo wget -q -O /usr/local/bin/yq \
+            "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64"
+          echo "${YQ_SHA256}  /usr/local/bin/yq" | sha256sum --check -
+          sudo chmod +x /usr/local/bin/yq
+          # Override the chart's image.repository + tag so Argo syncs the
+          # locally-loaded `podinfo-app:gitops` rather than reaching for GHCR.
+          yq -i '
+            .spec.template.spec.source.repoURL = strenv(REPO_URL) |
+            .spec.template.spec.source.targetRevision = strenv(REF) |
+            .spec.template.spec.source.helm.values = "image:\n  repository: podinfo-app\n  tag: gitops\n  pullPolicy: Never\n"
+          ' argocd/applicationset.yaml
+          echo "--- patched applicationset ---"
+          cat argocd/applicationset.yaml
+
+      - name: Apply ApplicationSet
+        run: kubectl apply -n argocd -f argocd/applicationset.yaml
+
+      # ----- 5. wait for sync + health -----
+      - name: Wait for Application sync
+        run: |
+          for i in $(seq 1 60); do
+            sync=$(kubectl -n argocd get app podinfo-app-dev -o jsonpath='{.status.sync.status}' 2>/dev/null || true)
+            health=$(kubectl -n argocd get app podinfo-app-dev -o jsonpath='{.status.health.status}' 2>/dev/null || true)
+            echo "[$i] sync=$sync health=$health"
+            if [ "$sync" = "Synced" ] && [ "$health" = "Healthy" ]; then
+              echo "Application is Synced + Healthy"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Application never reached Synced+Healthy" >&2
+          exit 1
+
+      - name: Curl the synced service
+        run: |
+          ns=$(kubectl -n argocd get app podinfo-app-dev -o jsonpath='{.spec.destination.namespace}')
+          echo "namespace = $ns"
+          kubectl -n "$ns" wait --for=condition=Available deploy --all --timeout=120s
+          # The chart's fullname helper has a `contains` shortcut: when the
+          # Helm release name already contains the chart name, fullname is
+          # just the release name. Release `podinfo-app-dev` contains
+          # `podinfo-app` → Service is `podinfo-app-dev`.
+          kubectl -n "$ns" port-forward svc/podinfo-app-dev 18080:80 >/tmp/pf.log 2>&1 &
+          PF_PID=$!
+          trap 'kill $PF_PID 2>/dev/null || true' EXIT
+          sleep 3
+          curl -fsS --max-time 3 http://127.0.0.1:18080/healthz | grep -q '"status":"ok"'
+          curl -fsS --max-time 3 http://127.0.0.1:18080/ | grep -q '"podName"'
+          echo "GitOps round-trip succeeded"
+
+      - name: Diagnostics on failure
+        if: failure()
+        run: |
+          echo "::group::argocd apps";   kubectl -n argocd get app -o wide; echo "::endgroup::"
+          echo "::group::app describe";  kubectl -n argocd describe app podinfo-app-dev || true; echo "::endgroup::"
+          echo "::group::all -A";        kubectl get all -A -o wide; echo "::endgroup::"
+          echo "::group::events";        kubectl get events -A --sort-by=.lastTimestamp | tail -100; echo "::endgroup::"
+          echo "::group::repo-server";   kubectl -n argocd logs deploy/argocd-repo-server --tail=200 || true; echo "::endgroup::"
+          echo "::group::application-controller"; kubectl -n argocd logs sts/argocd-application-controller --tail=200 || true; echo "::endgroup::"

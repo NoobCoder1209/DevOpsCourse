@@ -1,0 +1,52 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: podinfo-app
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - env: dev
+            namespace: podinfo-dev
+          - env: prod
+            namespace: podinfo-prod
+  template:
+    metadata:
+      name: 'podinfo-app-{{.env}}'
+      labels:
+        env: '{{.env}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/NoobCoder1209/DevOpsCourse
+        targetRevision: main
+        path: chart
+        helm:
+          valueFiles:
+            - values.yaml
+            - ../environments/{{.env}}/values.yaml
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      # Default sync policy is conservative; the dev-only override below
+      # adds prune+selfHeal so the dev env is genuinely auto-reconciled.
+      syncPolicy:
+        automated:
+          prune: false
+          selfHeal: false
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+  # templatePatch is rendered AFTER the typed template above and supports
+  # full Go-template substitution into typed fields (booleans, ints, etc.)
+  # without breaking YAML parsing. We use it to flip dev to autoSync+prune
+  # while leaving prod manual.
+  templatePatch: |
+    spec:
+      syncPolicy:
+        automated:
+          prune: {{ if eq .env "dev" }}true{{ else }}false{{ end }}
+          selfHeal: {{ if eq .env "dev" }}true{{ else }}false{{ end }}
