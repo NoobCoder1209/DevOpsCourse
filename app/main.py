@@ -25,6 +25,12 @@ def create_app() -> Flask:
     return app
 
 
+# WSGI entry point gunicorn loads as `app.main:app` from the Dockerfile CMD.
+# Defined at module scope (rather than `create_app()` in the CMD) so the CMD
+# string contains no shell-interpreted parentheses.
+app = create_app()
+
+
 # Allow `python -m app.main` for quick local sanity checks.
 if __name__ == "__main__":  # pragma: no cover
-    create_app().run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))

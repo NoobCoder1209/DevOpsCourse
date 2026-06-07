@@ -6,7 +6,9 @@ metadata:
     {{- include "podinfo-app.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": test
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    # Keep the pod around after success so `helm test --logs` can retrieve
+    # output; only purge on the next test run.
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   restartPolicy: Never
   containers:
