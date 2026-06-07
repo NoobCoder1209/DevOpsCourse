@@ -11,12 +11,8 @@ spec:
         elements:
           - env: dev
             namespace: podinfo-dev
-            autoSync: true
-            prune: true
           - env: prod
             namespace: podinfo-prod
-            autoSync: false
-            prune: false
   template:
     metadata:
       name: 'podinfo-app-{{.env}}'
@@ -35,10 +31,22 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{.namespace}}'
+      # Default sync policy is conservative; the dev-only override below
+      # adds prune+selfHeal so the dev env is genuinely auto-reconciled.
       syncPolicy:
         automated:
-          prune: '{{.prune}}'
-          selfHeal: '{{.autoSync}}'
+          prune: false
+          selfHeal: false
         syncOptions:
           - CreateNamespace=true
           - ServerSideApply=true
+  # templatePatch is rendered AFTER the typed template above and supports
+  # full Go-template substitution into typed fields (booleans, ints, etc.)
+  # without breaking YAML parsing. We use it to flip dev to autoSync+prune
+  # while leaving prod manual.
+  templatePatch: |
+    spec:
+      syncPolicy:
+        automated:
+          prune: {{ if eq .env "dev" }}true{{ else }}false{{ end }}
+          selfHeal: {{ if eq .env "dev" }}true{{ else }}false{{ end }}
