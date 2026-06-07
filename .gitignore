@@ -1,51 +1,44 @@
-app/python-app/lib64
-app/python-app/bin/flask
-
-
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-__init__.pyc
-__init__.pyo
+*.py[cod]
+*$py.class
 *.egg-info/
-dist/
 build/
-*.egg
+dist/
+.eggs/
 
-# Virtual Environment
+# Virtual envs
+.venv/
 venv/
 env/
-env.bak/
 ENV/
+
+# Test / coverage
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Env files (allow .env.example)
+.env
+.env.*
+!.env.example
+
+# Editors / OS
+.idea/
 .vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
 
-# Jenkins
-*.log
-workspace/
-
-# Docker
-Dockerfile*
-docker-compose.yml
-.dockerignore
-*.tar
-*.gz
-*.zip
-*.db
-*.sqlite3
-*.sql
-*.tar.gz
+# Helm
+chart/charts/
+chart/Chart.lock
 *.tgz
 
-# Logs
-*.log
-
-# Ignore any local environment or secret files (modify this as needed)
-.env
-.env.local
-*.secret
-*.key
-
-# Ignore macOS system files
-.DS_Store
+# Docs build artifacts
+/site/

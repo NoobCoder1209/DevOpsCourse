@@ -1,0 +1,43 @@
+.git
+.gitignore
+.github
+.dockerignore
+README.md
+PLAN.md
+LICENSE
+
+# Tests + dev tooling
+tests/
+docs/
+chart/
+argocd/
+environments/
+
+# Python caches + envs
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Editor / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local env (ship .env.example only)
+.env
+.env.*
+!.env.example
+
+# Compose meta (Dockerfile itself is read by the daemon, not part of the
+# context, so no need to ignore it explicitly)
+docker-compose*.yml
