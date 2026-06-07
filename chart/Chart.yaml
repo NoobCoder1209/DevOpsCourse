@@ -1,0 +1,17 @@
+apiVersion: v2
+name: podinfo-app
+description: Demo Flask app exposing pod identity via the Kubernetes Downward API.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/NoobCoder1209/DevOpsCourse
+sources:
+  - https://github.com/NoobCoder1209/DevOpsCourse
+maintainers:
+  - name: NoobCoder1209
+keywords:
+  - flask
+  - podinfo
+  - demo
+  - gitops
+  - argocd
