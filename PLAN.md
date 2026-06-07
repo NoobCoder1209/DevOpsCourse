@@ -17,6 +17,21 @@ You are the build session for this repo. Read this file end-to-end, then start e
 9. **All `Agent` tool calls must pass `model: "opus"`.**
 10. **Off-limits forever:** SAP-internal references, `~/.claude/`, RCA content.
 
+## Branch + PR workflow (mandatory)
+
+Every PLAN.md inherits this. Sessions never commit straight to `main`.
+
+1. **One branch per phase.** Name branches `phase/<N>-<slug>` matching the build phases below. Examples: `phase/1-bootstrap`, `phase/2-core`, `phase/3-tests`, `phase/4-readme`, `phase/5-polish`. ~3–5 phases per repo, ~3–5 PRs per repo.
+2. **Aggressive commits within a branch.** Push every meaningful commit to the working branch. WIP is fine on a feature branch.
+3. **Open a PR when the phase is complete.** Use `gh pr create`. Clear title (`phase 2: core agent loop` style) and a short body summarising what changed.
+4. **Run `/pr-reviewer` on every PR.** No exceptions. The reviewer reads the diff and produces findings.
+5. **Decision rule:**
+   - **Clean review (zero findings) → auto-merge** with `gh pr merge --squash --auto`. Move on to the next phase.
+   - **Any findings (even nits) → surface them to the user.** Do NOT auto-merge. Wait for user direction (fix on the same branch, defer, or override).
+6. **`main` stays green.** Phase branches can be WIP; `main` only ever gets reviewed-clean code.
+7. **Branch naming + commit messages must follow `git-safety-standards`** (`feature/`, `fix/`, `docs/` prefixes acceptable as alternatives to `phase/N-` when a change spans phases).
+8. **Never `--force` push to `main`.** Force-push to your own phase branches is fine before the PR is opened.
+
 ## Subagent playbook (this repo)
 
 Full rebuild = lots of moving parts. 4 in research, 2 in review.
