@@ -38,6 +38,6 @@ env/
 .env.*
 !.env.example
 
-# Compose / docker meta
+# Compose meta (Dockerfile itself is read by the daemon, not part of the
+# context, so no need to ignore it explicitly)
 docker-compose*.yml
-Dockerfile

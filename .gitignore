@@ -37,6 +37,7 @@ Thumbs.db
 
 # Helm
 chart/charts/
+chart/Chart.lock
 *.tgz
 
 # Docs build artifacts
