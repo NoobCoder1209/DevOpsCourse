@@ -1,0 +1,102 @@
+name: build-and-push
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "environments/**"
+      - "docs/**"
+      - "README.md"
+      - "PLAN.md"
+      - ".github/dependabot.yml"
+
+permissions:
+  contents: write   # to commit the dev-tag bump back to main
+  packages: write   # to push to GHCR
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false   # don't drop in-flight builds — image is the SoT
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      image_tag: ${{ steps.meta.outputs.tag }}
+      image_repo: ${{ steps.meta.outputs.repo }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need a token with write access for the value-bump commit. The
+          # default GITHUB_TOKEN works because permissions: contents: write.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute lowercase image repo + tag
+        id: meta
+        # GHCR rejects uppercase in repo paths. The owner/repo here is
+        # NoobCoder1209/DevOpsCourse → lowercase via tr.
+        run: |
+          repo=$(echo "ghcr.io/${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          tag="sha-${GITHUB_SHA::7}"
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag"   >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.repo }}:${{ steps.meta.outputs.tag }}
+            ${{ steps.meta.outputs.repo }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  bump-dev:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install yq
+        run: |
+          sudo wget -q -O /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/download/v4.44.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+          yq --version
+
+      - name: Bump environments/dev/values.yaml image.tag
+        run: |
+          yq -i '.image.tag = "${{ needs.build.outputs.image_tag }}"' \
+            environments/dev/values.yaml
+          echo "--- after bump ---"
+          cat environments/dev/values.yaml
+
+      - name: Commit + push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet environments/dev/values.yaml; then
+            echo "no change to dev tag — nothing to commit"
+            exit 0
+          fi
+          git add environments/dev/values.yaml
+          git commit -m "chore(dev): bump image to ${{ needs.build.outputs.image_tag }} [skip ci]"
+          git push

@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: podinfo-app
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - env: dev
+            namespace: podinfo-dev
+            autoSync: true
+            prune: true
+          - env: prod
+            namespace: podinfo-prod
+            autoSync: false
+            prune: false
+  template:
+    metadata:
+      name: 'podinfo-app-{{.env}}'
+      labels:
+        env: '{{.env}}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/NoobCoder1209/DevOpsCourse
+        targetRevision: main
+        path: chart
+        helm:
+          valueFiles:
+            - values.yaml
+            - ../environments/{{.env}}/values.yaml
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      syncPolicy:
+        automated:
+          prune: '{{.prune}}'
+          selfHeal: '{{.autoSync}}'
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
