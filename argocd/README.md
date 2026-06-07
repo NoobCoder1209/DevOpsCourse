@@ -3,6 +3,13 @@
 These manifests assume Argo CD is already installed in the `argocd` namespace.
 For a quick spin-up against any cluster (kind, k3d, your dev cluster):
 
+> **Note:** the container image lives at `ghcr.io/noobcoder1209/devopscourse`.
+> GHCR makes packages **private by default** on first push. Before Argo CD can
+> pull, either flip the package to public on
+> https://github.com/users/NoobCoder1209/packages/container/devopscourse/settings,
+> or add `imagePullSecrets` referencing a GHCR PAT to the Application's
+> Helm values overlay.
+
 ```bash
 kubectl create namespace argocd
 helm repo add argo https://argoproj.github.io/argo-helm
