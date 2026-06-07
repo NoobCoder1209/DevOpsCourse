@@ -1,0 +1,11 @@
+# Standard helmignore — keep templates/tests/ in the chart so
+# `helm test` works after `helm package` + install.
+.git/
+.gitignore
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+README.md.gotmpl

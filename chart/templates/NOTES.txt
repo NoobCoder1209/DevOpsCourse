@@ -1,0 +1,18 @@
+1. Get the application URL by running these commands:
+
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ (index $host.paths 0).path }}
+{{- end }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "podinfo-app.fullname" . }} 8080:{{ .Values.service.port }}
+  curl http://localhost:8080/
+  curl http://localhost:8080/healthz
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get -n {{ .Release.Namespace }} svc {{ include "podinfo-app.fullname" . }} -o jsonpath='{.spec.ports[0].nodePort}')
+  curl http://$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}'):$NODE_PORT/
+{{- end }}
+
+2. Watch a few rollouts and the pod identity in `/` will change as new pods come up:
+
+   while true; do curl -s http://localhost:8080/ | jq .podName; sleep 1; done

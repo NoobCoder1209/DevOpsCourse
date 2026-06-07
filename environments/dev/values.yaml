@@ -1,0 +1,10 @@
+# Dev overlay. The image.tag here is rewritten by build-and-push.yml
+# on every merge to main (the GitOps commit-back pattern). Don't hand-edit
+# unless you mean to override CI for a single sync — the next CI run
+# will overwrite this anyway.
+
+image:
+  tag: "0.1.0"
+
+replicaCount: 1
+gunicornWorkers: 2

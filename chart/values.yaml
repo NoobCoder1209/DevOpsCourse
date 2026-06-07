@@ -1,0 +1,89 @@
+# Default values for podinfo-app.
+# Override per-environment in environments/{dev,prod}/values.yaml; the
+# CI workflow rewrites image.tag in environments/dev/values.yaml on merge
+# to main (the GitOps commit-back pattern).
+
+image:
+  repository: ghcr.io/noobcoder1209/devopscourse
+  # tag defaults to .Chart.AppVersion if left empty (the canonical Helm
+  # pattern). Env overlays under environments/{dev,prod}/values.yaml
+  # pin an explicit tag — the dev one is rewritten by CI on every merge.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+# Tunes gunicorn at runtime without a new image. Picked up by the
+# GUNICORN_WORKERS env var in templates/deployment.yaml.
+gunicornWorkers: 2
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: podinfo.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+# Pod-level securityContext. UID matches the Dockerfile.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container-level securityContext. Hardened to PSS-restricted.
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+probes:
+  liveness:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 2
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

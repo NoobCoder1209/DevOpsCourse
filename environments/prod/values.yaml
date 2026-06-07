@@ -1,0 +1,19 @@
+# Prod overlay. Image tag is human-pinned (only release.yml touches it,
+# never the per-commit build workflow). Bump intentionally on each release.
+
+image:
+  tag: "0.1.0"
+
+replicaCount: 2
+# Gunicorn rule of thumb is 2*cores+1. With 500m CPU limit, 2 workers
+# is the sweet spot: enough concurrency for blocking I/O, no
+# over-subscription that would force throttled scheduling.
+gunicornWorkers: 2
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 96Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
