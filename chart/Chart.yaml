@@ -2,6 +2,9 @@ apiVersion: v2
 name: podinfo-app
 description: Demo Flask app exposing pod identity via the Kubernetes Downward API.
 type: application
+# `version` tracks the chart itself (template + values shape changes).
+# `appVersion` tracks the app image and is the default for image.tag when
+# no overlay pins one; `release.yml` (phase 4) bumps both on `v*` tags.
 version: 0.1.0
 appVersion: "0.1.0"
 home: https://github.com/NoobCoder1209/DevOpsCourse

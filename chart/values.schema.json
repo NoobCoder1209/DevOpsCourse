@@ -7,15 +7,15 @@
   "properties": {
     "image": {
       "type": "object",
-      "required": ["repository", "tag"],
+      "required": ["repository"],
       "properties": {
         "repository": { "type": "string", "minLength": 1 },
-        "tag": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "description": "Image tag. Empty string falls back to Chart.AppVersion." },
         "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
       }
     },
     "replicaCount": { "type": "integer", "minimum": 1 },
-    "gunicornWorkers": { "type": "integer", "minimum": 1 },
+    "gunicornWorkers": { "type": "integer", "minimum": 1, "maximum": 32 },
     "service": {
       "type": "object",
       "required": ["port", "targetPort"],
@@ -29,6 +29,30 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "requests": { "type": "object" },
+        "limits": { "type": "object" }
+      }
+    },
+    "podSecurityContext": {
+      "type": "object",
+      "properties": {
+        "runAsNonRoot": { "type": "boolean" },
+        "runAsUser": { "type": "integer", "minimum": 1 },
+        "fsGroup": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "containerSecurityContext": {
+      "type": "object",
+      "properties": {
+        "runAsNonRoot": { "type": "boolean" },
+        "runAsUser": { "type": "integer", "minimum": 1 },
+        "readOnlyRootFilesystem": { "type": "boolean" },
+        "allowPrivilegeEscalation": { "type": "boolean" }
       }
     }
   }

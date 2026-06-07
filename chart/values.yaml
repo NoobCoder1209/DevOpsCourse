@@ -5,7 +5,10 @@
 
 image:
   repository: ghcr.io/noobcoder1209/devopscourse
-  tag: latest
+  # tag defaults to .Chart.AppVersion if left empty (the canonical Helm
+  # pattern). Env overlays under environments/{dev,prod}/values.yaml
+  # pin an explicit tag — the dev one is rewritten by CI on every merge.
+  tag: ""
   pullPolicy: IfNotPresent
 
 replicaCount: 1
