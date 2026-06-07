@@ -81,6 +81,16 @@ These are the load-bearing questions — surface them **before any code is writt
 7. **Argo CD manifests** under `argocd/` — `Application` or `ApplicationSet`, points at the chart in this repo, sample values for `dev` + `prod`.
 8. **README** with: hero, architecture diagram (the journey), quick start, "Skills demonstrated," license.
 
+## Production hygiene (must apply, not optional)
+
+Inherits the master plan's "Production hygiene checklist." Repo-specific application:
+
+- **Env vars at runtime.** `.env.example` shipped; `.env*` gitignored; no secrets ever in image layers.
+- **Pydantic input validation on every Flask route accepting payloads.** Use Pydantic v2 models for request bodies. Bad input → 400 with a clean JSON error, never a stack trace.
+- **Global Flask error handler.** `@app.errorhandler(Exception)` returns a generic JSON `{ "error": "...", "request_id": "..." }`. **No tracebacks in HTTP responses, ever.** Log full details server-side at `ERROR` level for debugging.
+- **Healthcheck endpoint that doesn't leak.** `/healthz` returns 200 with `{ "status": "ok" }` — no version strings, no internals.
+- **Index on the high-traffic field.** If the demo app reads from any persistent store (likely not for this scope), document the index choice.
+
 ## Out of scope
 
 - No Jenkins (replaced)
@@ -251,6 +261,9 @@ PR `rebuild/v1` → `main`. Capture screenshots before merge. Topics: `devops`, 
 - [ ] No SAP-internal references; no `~/.claude/` references
 - [ ] Topics + description set
 - [ ] Repo renamed if user agreed
+- [ ] All Flask error responses are JSON-shaped, no HTML stack-trace pages
+- [ ] Bad payload returns 400 with Pydantic-shaped error, not 500
+- [ ] `/healthz` returns no internal version / build info
 
 ## Stretch (defer)
 
