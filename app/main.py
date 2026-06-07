@@ -26,5 +26,5 @@ def create_app() -> Flask:
 
 
 # Allow `python -m app.main` for quick local sanity checks.
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     create_app().run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))

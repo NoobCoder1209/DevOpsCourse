@@ -6,12 +6,12 @@ FROM python:${PYTHON_VERSION} AS deps
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 WORKDIR /build
 COPY requirements.txt .
-RUN pip install --user --no-warn-script-location -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --user --no-warn-script-location -r requirements.txt
 
 # ---- runtime stage -----------------------------------------------------------
 FROM python:${PYTHON_VERSION} AS runtime
@@ -24,20 +24,25 @@ LABEL org.opencontainers.image.source="https://github.com/NoobCoder1209/DevOpsCo
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH=/home/app/.local/bin:$PATH \
-    PORT=8000
+    PORT=8000 \
+    GUNICORN_WORKERS=2
 
 # Non-root user (UID matches Helm chart's securityContext.runAsUser).
-RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin app
+RUN useradd --uid 10001 --create-home --shell /sbin/nologin app
 
 WORKDIR /app
 COPY --from=deps --chown=app:app /root/.local /home/app/.local
 COPY --chown=app:app app ./app
 
-USER 10001
+USER app
 EXPOSE 8000
 
 # Healthcheck uses urllib so we don't need curl in the runtime image.
+# Wrapped in try/except so HTTPError / URLError / timeouts produce a clean
+# `exit 1` instead of a noisy traceback in container logs.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status == 200 else 1)"
+  CMD ["python", "-c", "import sys, urllib.request\ntry:\n    r = urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2)\n    sys.exit(0 if r.status == 200 else 1)\nexcept Exception:\n    sys.exit(1)"]
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--access-logfile", "-", "--error-logfile", "-", "app.main:create_app()"]
+# Gunicorn worker count is overridable via the GUNICORN_WORKERS env var
+# (defaults to 2). The Helm chart can tune it without rebuilding the image.
+CMD ["sh", "-c", "exec gunicorn --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-2} --access-logfile - --error-logfile - app.main:create_app()"]

@@ -3,12 +3,13 @@ services:
     build:
       context: .
     image: podinfo-app:dev
+    init: true
     ports:
       - "8000:8000"
     env_file:
       - .env.example
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status==200 else 1)"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys;\ntry:\n  sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).status==200 else 1)\nexcept Exception:\n  sys.exit(1)"]
       interval: 10s
       timeout: 3s
       retries: 5
