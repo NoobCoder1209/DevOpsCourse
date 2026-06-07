@@ -4,6 +4,6 @@
 # will overwrite this anyway.
 
 image:
-  tag: "sha-735c53c"
+  tag: "sha-1294df5"
 replicaCount: 1
 gunicornWorkers: 2
