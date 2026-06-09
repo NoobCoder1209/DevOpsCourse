@@ -15,6 +15,12 @@ The app itself is intentionally trivial (it returns the pod's identity from the 
 | --- | --- | --- |
 | ![CI passing](docs/screenshots/ci-passing.png) | ![kind smoke](docs/screenshots/kind-smoke.png) | ![argo sync](docs/screenshots/argo-sync.png) |
 
+Browser view of `/` returning the live K8s Downward API payload from a kind cluster:
+
+![Local demo, podinfo /](docs/screenshots/local-demo-browser.png)
+
+For a step-by-step walkthrough of running the demo locally, see [`guide.md`](guide.md).
+
 ## Architecture
 
 ```mermaid
