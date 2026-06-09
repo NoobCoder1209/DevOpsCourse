@@ -1,7 +1,7 @@
 # DevOpsCourse — Hands-On Guide
 
 > **Last verified:** 2026-06-09 against commit `1f5a87b` (main HEAD at time of verification).
-> Ran the full local flow on macOS 14 (Apple Silicon) with Docker Desktop 29.5.2, kind v0.32.0, helm v4.2.0, kubectl 1.30, Python 3.12.8.
+> Ran the full local flow on macOS 14 (Apple Silicon) with Docker Desktop 29.5.2, kind v0.23.0, helm v3.16, kubectl 1.30, Python 3.12.8.
 > Observed: `pytest -q` 10/10 green at 100% coverage, `docker compose up` returned 200 on `/healthz`, kind+helm install + port-forward + curl returned the live K8s Downward API payload (`podName: demo-podinfo-app-59c4d666b8-qf62t`, `nodeName: guide-demo-control-plane`, `podIP: 10.244.0.5`), `helm test demo --logs` reported `Phase: Succeeded`. Captured terminal output is in [`docs/screenshots/local-demo.txt`](docs/screenshots/local-demo.txt) and a browser screenshot of `/` is in [`docs/screenshots/local-demo-browser.png`](docs/screenshots/local-demo-browser.png).
 
 This guide is for someone who has never touched the repo. It covers:
@@ -32,8 +32,8 @@ You need these on `PATH` before running anything below. Versions are what `Last 
 | --- | --- | --- |
 | Python 3.12 | 3.12.8 | `brew install python@3.12` |
 | Docker Desktop | 29.5.2 | https://docs.docker.com/desktop/install/mac-install/ — must be *running* before any `docker` / `kind` command |
-| `kind` | v0.32.0 | `brew install kind` |
-| `kubectl` | v1.30+ | `brew install kubectl` |
+| `kind` | v0.23.0 | `brew install kind` |
+| `kubectl` | 1.30 | `brew install kubectl` |
 | `helm` | v3.15+ | `brew install helm` |
 | `gh` (GitHub CLI) | latest | `brew install gh` (only needed if you want to merge PRs / inspect Actions runs from the terminal) |
 
@@ -103,6 +103,9 @@ curl http://localhost:8000/ | python3 -m json.tool
 #   }
 
 docker compose ps
+# Wait ~15s for the first healthcheck probe — the container starts up
+# in a few seconds but stays in `(health: starting)` until the first
+# /healthz probe succeeds. After that it flips to:
 # Container should show:  Up X seconds (healthy)
 
 docker compose exec app id
@@ -141,13 +144,13 @@ helm --kube-context kind-guide-demo install demo chart/ -n demo \
 kubectl --context kind-guide-demo -n demo get pods,svc
 
 # 6. Port-forward the service. Run this in one terminal and leave it running:
-kubectl --context kind-guide-demo -n demo port-forward svc/demo-podinfo-app 8080:80
+kubectl --context kind-guide-demo -n demo port-forward svc/demo-podinfo-app 18091:80
 
 # 7. In a second terminal:
-curl http://localhost:8080/healthz
+curl http://localhost:18091/healthz
 # → {"status":"ok"}
 
-curl http://localhost:8080/ | python3 -m json.tool
+curl http://localhost:18091/ | python3 -m json.tool
 # → all 5 fields with REAL pod identity, e.g.
 # {
 #   "hostname": "demo-podinfo-app-59c4d666b8-qf62t",
@@ -198,7 +201,7 @@ The repo ships full Argo CD manifests under `argocd/` and a `gitops-e2e.yml` wor
 | File | What it does |
 | --- | --- |
 | `app/main.py` | Flask app factory. `create_app()` registers the blueprint + global error handlers. **Module-level `app = create_app()`** is what gunicorn loads as `app.main:app` |
-| `app/routes.py` | Blueprint with `GET /` (returns the pod identity payload) and `GET /healthz` (returns `{"status":"ok"}` and **nothing else** — opaque by design) |
+| `app/routes.py` | Blueprint with `GET /` (returns the pod identity payload) and `GET /healthz` (returns `{"status":"ok"}` and **nothing else** — opaque by design). The non-opaque `/` is documented in `podinfo.py`'s module docstring as the demo endpoint where pod identity is the point |
 | `app/podinfo.py` | Reads `POD_NAME` / `POD_IP` / `NODE_NAME` from env (Downward API in cluster) with localhost fallbacks. Adds `hostname` (always `socket.gethostname()`) and an ISO-8601 UTC `timestamp` |
 | `app/errors.py` | Global error handler: every unhandled exception becomes `{"error": "...", "request_id": "..."}` JSON. **Tracebacks never leave the server.** Per-request UUID set in `before_request` for correlating client error to server log |
 | `app/__init__.py` | Empty marker file |
@@ -207,7 +210,8 @@ The repo ships full Argo CD manifests under `argocd/` and a `gitops-e2e.yml` wor
 
 | File | What it tests |
 | --- | --- |
-| `tests/conftest.py` | Single fixture: `client` from `app.main:create_app().test_client()` |
+| `tests/__init__.py` | Empty marker file |
+| `tests/conftest.py` | Single `client` fixture wrapping `create_app()` (sets `app.testing = True` then yields the test client) |
 | `tests/test_routes.py` | `/healthz` opacity (only `status` key), `/` payload shape, JSON 404, forced exception → JSON 500 with `request_id` and **no traceback substring**, request_id uniqueness across two requests, server-side log capture (caplog) on the 500 path |
 | `tests/test_podinfo.py` | Env-var override + localhost fallback + ISO-8601 UTC timestamp |
 
@@ -353,7 +357,7 @@ This was a real bug, fixed in the chart. If you're seeing it on a fresh clone, y
 
 ### Pod logs say `sh: 1: Syntax error: "(" unexpected`
 
-You're on an old commit. The Dockerfile's `CMD` used to call `app.main:create_app()` — gunicorn parsed it fine but `sh -c` interpreted the `()` as subshell syntax. Fixed in `5d407a4`. Pull `main` and rebuild.
+You're on an old commit. The Dockerfile's `CMD` used to call `app.main:create_app()`. Fixed in `5d407a4`: switched the WSGI target from `app.main:create_app()` to module-level `app.main:app` so the CMD argv contains no parentheses. Pull `main` and rebuild.
 
 ### `helm install` rejects values with a schema error
 
@@ -369,7 +373,7 @@ Background-launching port-forward is timing-dependent. Run it in the foreground 
 
 ### Argo CD's `templatePatch` is silently ignored
 
-You're on Argo CD &lt; v2.11. The chart we install via Helm pins `argo-cd 7.6.12` which ships Argo CD v2.12.6 (templatePatch GA'd in v2.11). If you're applying these manifests against a self-managed Argo install, check its version: `kubectl -n argocd get deploy argocd-server -o jsonpath='{.spec.template.spec.containers[0].image}'`.
+You're on Argo CD < v2.11. `templatePatch` GA'd in v2.11; any earlier version silently drops it. If you're applying these manifests against a self-managed Argo install, check its version: `kubectl -n argocd get deploy argocd-server -o jsonpath='{.spec.template.spec.containers[0].image}'`. The `gitops-e2e.yml` workflow uses `helm install argocd argo/argo-cd --version 7.6.12`, which provisions an Argo CD release new enough to support `templatePatch`.
 
 ### Image push to GHCR returns 403 / 401
 
@@ -378,7 +382,7 @@ First-push behaviour. Two causes:
 1. The workflow is missing `permissions: packages: write` at the job level (it isn't — but if you're forking and stripped it, that's the cause).
 2. **Repo Settings → Actions → General → Workflow permissions** is set to "Read repository contents and packages permissions". Change to "Read and write permissions" (one-time per fork).
 
-After the first successful push, the package is created **private**. To make it pullable from outside Actions, see Section 5.
+After the first successful push, the package is created **private**. To make it pullable from outside Actions, see [Section 5](#5-environment-variables-and-secrets).
 
 ### CI `build-and-push` runs cancel each other on rapid merges
 
