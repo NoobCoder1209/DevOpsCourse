@@ -1,0 +1,31 @@
+$ kubectl get pods -n demo
+NAME                                READY   STATUS      RESTARTS   AGE
+demo-podinfo-app-59c4d666b8-qf62t   1/1     Running     0          116s
+demo-podinfo-app-test               0/1     Completed   0          89s
+
+$ curl http://localhost:18091/healthz
+{"status":"ok"}
+
+
+$ curl http://localhost:18091/ | jq .
+{
+    "hostname": "demo-podinfo-app-59c4d666b8-qf62t",
+    "nodeName": "guide-demo-control-plane",
+    "podIP": "10.244.0.5",
+    "podName": "demo-podinfo-app-59c4d666b8-qf62t",
+    "timestamp": "2026-06-09T09:50:05.099643+00:00"
+}
+
+$ helm test demo -n demo --logs
+STATUS: deployed
+REVISION: 1
+DESCRIPTION: Install complete
+TEST SUITE:     demo-podinfo-app-test
+Last Started:   Tue Jun  9 12:50:05 2026
+Last Completed: Tue Jun  9 12:50:08 2026
+Phase:          Succeeded
+
+POD LOGS: demo-podinfo-app-test
+probing http://demo-podinfo-app:80/healthz
+probing http://demo-podinfo-app:80/
+
